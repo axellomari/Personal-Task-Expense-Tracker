@@ -1,71 +1,132 @@
-import { motion } from "framer-motion";
-import { useMessage } from "@/hooks/use-message";
-import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, Plus, ListTodo, Wallet } from "lucide-react";
+import type { Task, Expense } from "@shared/schema";
 
 export default function Home() {
-  const { data, isLoading, isError } = useMessage();
+  const [taskText, setTaskText] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
 
-  // Determine the display message. Fallback to "Hello World" 
-  // as explicitly requested by the implementation notes.
-  const displayMessage = data?.message || "Hello World";
+  const { data: tasks = [], isLoading: loadingTasks } = useQuery<Task[]>({
+    queryKey: ["/api/tasks"],
+  });
+
+  const { data: expenses = [], isLoading: loadingExpenses } = useQuery<Expense[]>({
+    queryKey: ["/api/expenses"],
+  });
+
+  const addTaskMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const res = await apiRequest("POST", "/api/tasks", { text });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      setTaskText("");
+    },
+  });
+
+  const addExpenseMutation = useMutation({
+    mutationFn: async (amount: string) => {
+      const res = await apiRequest("POST", "/api/expenses", { amount });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      setExpenseAmount("");
+    },
+  });
+
+  const totalSpent = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
 
   return (
-    <div className="relative min-h-screen w-full bg-background overflow-hidden flex flex-col items-center justify-center p-6 md:p-12 lg:p-24">
-      
-      {/* Extremely subtle background gradient for minimal depth */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-muted/50 via-background to-background pointer-events-none" />
+    <div className="min-h-screen bg-background p-8 font-sans">
+      <div className="max-w-4xl mx-auto space-y-8">
+        <h1 className="text-4xl font-bold tracking-tight text-center mb-12">Tracker Dashboard</h1>
 
-      <div className="relative z-10 w-full max-w-5xl mx-auto flex flex-col items-center justify-center text-center">
-        {isLoading ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex flex-col items-center gap-4 text-muted-foreground"
-          >
-            <Loader2 className="w-6 h-6 animate-spin opacity-50" />
-            <span className="text-xs font-semibold tracking-[0.2em] uppercase">
-              Initializing
-            </span>
-          </motion.div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ 
-              duration: 1.2, 
-              ease: [0.16, 1, 0.3, 1] // Custom refined ease-out
-            }}
-            className="flex flex-col items-center justify-center space-y-8"
-          >
-            <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-[10rem] font-bold text-foreground leading-[0.9] tracking-tighter mix-blend-difference">
-              {displayMessage}
-            </h1>
-            
-            <motion.div
-              initial={{ opacity: 0, scaleX: 0 }}
-              animate={{ opacity: 1, scaleX: 1 }}
-              transition={{ delay: 0.6, duration: 1, ease: "anticipate" }}
-              className="w-16 h-[2px] bg-foreground/20 rounded-full"
-            />
-            
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.8, duration: 1 }}
-              className="text-xs sm:text-sm md:text-base font-medium text-muted-foreground uppercase tracking-[0.3em] sm:tracking-[0.4em]"
-            >
-              {isError ? "Fallback State Active" : "Minimalist Canvas"}
-            </motion.p>
-          </motion.div>
-        )}
+        <div className="grid md:grid-cols-2 gap-8">
+          {/* Tasks Section */}
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center space-x-2">
+              <ListTodo className="w-5 h-5 text-primary" />
+              <CardTitle>Tasks</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex space-x-2">
+                <Input
+                  placeholder="Enter task..."
+                  value={taskText}
+                  onChange={(e) => setTaskText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && taskText && addTaskMutation.mutate(taskText)}
+                />
+                <Button 
+                  onClick={() => taskText && addTaskMutation.mutate(taskText)}
+                  disabled={addTaskMutation.isPending}
+                >
+                  {addTaskMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                </Button>
+              </div>
+              <ul className="space-y-2">
+                {loadingTasks ? (
+                  <li className="text-muted-foreground italic">Loading tasks...</li>
+                ) : tasks.length === 0 ? (
+                  <li className="text-muted-foreground italic">No tasks yet</li>
+                ) : (
+                  tasks.map((task) => (
+                    <li key={task.id} className="p-3 bg-muted/50 rounded-md border text-sm">
+                      {task.text}
+                    </li>
+                  ))
+                )}
+              </ul>
+            </CardContent>
+          </Card>
+
+          {/* Expenses Section */}
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center space-x-2">
+              <Wallet className="w-5 h-5 text-primary" />
+              <CardTitle>Expenses</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex space-x-2">
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={expenseAmount}
+                  onChange={(e) => setExpenseAmount(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && expenseAmount && addExpenseMutation.mutate(expenseAmount)}
+                />
+                <Button 
+                  onClick={() => expenseAmount && addExpenseMutation.mutate(expenseAmount)}
+                  disabled={addExpenseMutation.isPending}
+                >
+                  {addExpenseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                </Button>
+              </div>
+              <div className="p-4 bg-primary/5 rounded-lg border-2 border-primary/20 text-center">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">Total Spent</Label>
+                <div className="text-3xl font-bold text-primary">${totalSpent.toFixed(2)}</div>
+              </div>
+              <ul className="space-y-2">
+                {loadingExpenses ? (
+                  <li className="text-muted-foreground italic text-sm">Loading...</li>
+                ) : expenses.map((expense) => (
+                  <li key={expense.id} className="flex justify-between p-2 text-sm border-b last:border-0">
+                    <span>Expense</span>
+                    <span className="font-medium">${parseFloat(expense.amount).toFixed(2)}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
       </div>
-
-      {/* Decorative minimalist corner accents */}
-      <div className="absolute top-8 left-8 w-4 h-4 border-t-2 border-l-2 border-foreground/10" />
-      <div className="absolute top-8 right-8 w-4 h-4 border-t-2 border-r-2 border-foreground/10" />
-      <div className="absolute bottom-8 left-8 w-4 h-4 border-b-2 border-l-2 border-foreground/10" />
-      <div className="absolute bottom-8 right-8 w-4 h-4 border-b-2 border-r-2 border-foreground/10" />
     </div>
   );
 }
